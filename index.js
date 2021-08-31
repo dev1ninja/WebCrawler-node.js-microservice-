@@ -14,6 +14,7 @@ require('./database/connect')
 const mongoose = require('mongoose')
 const axios_file_download = require('./helpers/download')
 const fs = require('fs')
+const moment = require('moment')
 
 // const axios = axios.create({
 //     // WARNING: This value will be ignored.
@@ -148,12 +149,12 @@ function setFilterProcessId(pId){
         "fPP:numeroProcesso:respectivoTribunal",
         "fPP:numeroProcesso:numeroOrgaoJustica",
     ]
-    const reg = /\d+-\d+\.\d+.\d+.\d+.\d+/
+    const reg = /(\d+)-(\d+)\.(\d+)\.(\d+).(\d+)\.(\d+)/
     const matches = pId.match(reg)
     for(let i = 0; i < inputIds.length; i++){
         let $input = document.getElementById(inputIds[i])
-        $($input).val(matches[i])
-        console.log(inputIds[i], $($input).val)
+        $($input).val(matches[i+1])
+        console.log(inputIds[i], $($input).val())
     }
 }
 
@@ -162,7 +163,7 @@ async function pressSearchBtn(){
         await timer(1000)
     }while(!window.executarReCaptcha)
     // console.log()
-    console.log(document.getElementById("fPP:searchProcessos").outerHTML)
+    console.log(document.getElementById("fPP:searchProcessos").id, "pressed")
     document.getElementById("fPP:searchProcessos").click()
     await timer(500)
 }
@@ -184,11 +185,11 @@ function findLinkElement(){
 
 async function getProcessDetailUrl($a){
     return new Promise(resolve => {
-        dom.window.confirm = (text) => {
+        window.confirm = (text) => {
             console.log("confirm", text)
             return true
         }
-        dom.window.open = (url, title, features) => {
+        window.open = (url, title, features) => {
             // console.log("open new url", url)
             resolve(url)
         }
@@ -229,6 +230,7 @@ async function getProcessDetail(detail_url, p_id){
     /******** polo ********/
     jsondata.polo_active = getPolo('Ativo')
     jsondata.polo_passive = getPolo('Passivo')
+    jsondata.events = getEvents()
     // jsondata.polo_passive = polo_passive
     return jsondata
 }
@@ -257,13 +259,36 @@ function getPolo(type){
     return polo
 }
 
+
+function getEvents(){
+    const $timelineDiv = document.getElementById('divTimeLine:eventosTimeLineElement')
+    const $eventdates = Array.from($timelineDiv.querySelectorAll(".media.data"))
+    moment.locale('pt')
+    const events = $eventdates
+        .map($date => ({
+            date: $($date).text().trim(), 
+            description: $($date).next().find('.text-upper.texto-movimento').text().trim(),
+            time: $($date).next().find('.col-sm-12 small.text-muted.pull-right').text().trim()
+        }))
+        .filter(each => each.date)
+        .map(each => ({ 
+            description: each.description, 
+            date:moment(each.date, 'DD MMM YYYY').format('DD/MM/YYYY') + " " + each.time ,
+            items: []
+        }))
+    console.log(events)
+    return events
+}
+
 void async function main(){
     await login()
 
     const dom = await loadListView()
     loadJquery(dom)
     
-    setFilterProcessId('0800097-04.2017.8.10.0135')
+    const processId = process.argv[2] || '0800097-04.2017.8.10.0135'
+
+    setFilterProcessId(processId)
     await pressSearchBtn()
     await waitLoading()
     const $a = findLinkElement()
@@ -274,5 +299,6 @@ void async function main(){
     
     const jsondata = await getProcessDetail(detail_url, p_id)
     console.log(jsondata)
+    saveJson2Mongo(jsondata)
 }()
 

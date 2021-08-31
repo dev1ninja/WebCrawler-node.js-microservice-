@@ -34,6 +34,27 @@ function getPolo(type){
     return polo
 }
 
+
+function getEvents(){
+    const $timelineDiv = document.getElementById('divTimeLine:eventosTimeLineElement')
+    const $eventdates = Array.from($timelineDiv.querySelectorAll(".media.data"))
+    moment.locale('pt')
+    const events = $eventdates
+        .map($date => ({
+            date: $($date).text().trim(), 
+            description: $($date).next().find('.text-upper.texto-movimento').text().trim(),
+            time: $($date).next().find('.col-sm-12 small.text-muted.pull-right').text().trim()
+        }))
+        .filter(each => each.date)
+        .map(each => ({ 
+            date:moment(each.date, 'DD MMM YYYY').format('DD/MM/YYYY') + " " + each.time,
+            description: each.description, 
+            items: []
+        }))
+    console.log(events)
+    return events
+}
+
 void async function main(){
     const dom = await JSDOM.fromFile('1.html')
 
@@ -53,9 +74,9 @@ void async function main(){
     console.log('poloActive', getPolo('Ativo'))
     console.log('poloPassive', getPolo('Passivo'))
     const $timelineDiv = document.getElementById('divTimeLine:eventosTimeLineElement')
-    const eventdates = $timelineDiv.querySelectorAll(".media.data")
+    const eventdates = Array.from($timelineDiv.querySelectorAll(".media.data"))
     moment.locale('pt')
-    const events = Array.from(eventdates).map(date => $(date).text().trim())
+    const events = eventdates.map(date => $(date).text().trim())
         .filter(each => each)
         .map(each => moment(each, 'DD MMM YYYY').format('DD/MM/YYYY'))
         .map(date => (
@@ -63,7 +84,9 @@ void async function main(){
             date: date
         }
     ))
-    console.log(events)
+    // console.log(events)
+
+    getEvents()
 }()
 
 /*
