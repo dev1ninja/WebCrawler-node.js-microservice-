@@ -9,11 +9,12 @@ const axiosCookieJarSupport = require('axios-cookiejar-support').default
 const tough = require('tough-cookie')
 const util = require('util')
 const timer = util.promisify(setTimeout)
-require('./database/connect')
 const mongoose = require('mongoose')
 const axios_file_download = require('./helpers/download')
 const fs = require('fs')
 const moment = require('moment')
+
+const virtualConsole = new jsdom.VirtualConsole();
 
 // const axios = axios.create({
 //     // WARNING: This value will be ignored.
@@ -99,31 +100,26 @@ async function loadListView(){
         storageQuota: 10000000,
         runScripts: 'dangerously',
         resources: "usable",
-        cookieJar
+        virtualConsole,
+        cookieJar,
     });
     return dom
 }
-async function downloadFile(dom){
-    $download = document.getElementById('detalheDocumento:download')
-    const downloadurl = await (function(){
-        return new Promise((resolve, reject) => {
-            dom.window.confirm = (text) => {
-                console.log('download confirm:', text)
-            }
-            dom.window.open = (url, title, features) => {
-                console.log(url, title)
-                resolve(url)
-            }
-            $download.click()
-        })
-    })()
-    axios_file_download(url)
-}
-
-async function getEvents(dom){
-    const $timelineDiv = document.getElementById('divTimeLine:eventosTimeLineElement')
-    const eventdates = $timelineDiv.querySelectorAll(".media.data")
-    Array.from(eventdates)
+async function downloadFile(){
+    var data = qs.stringify({
+        'detalheDocumento': 'detalheDocumento',
+        'autoScroll': '',
+        'javax.faces.ViewState': 'j_id7',
+        'detalheDocumento:download': 'detalheDocumento:download' 
+      });
+    axios_file_download({
+        url: 'https://pje.tjma.jus.br/pje/Processo/ConsultaProcesso/Detalhe/listProcessoCompletoAdvogado.seam',
+        method: 'get',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        data
+    })
 }
 
 async function saveJson2Mongo(data){
@@ -207,6 +203,7 @@ async function getProcessDetail(detail_url, p_id){
             storageQuota: 10000000,
             runScripts: 'dangerously',
             resources: "usable",
+            virtualConsole,
             cookieJar
         }    
     )
@@ -232,6 +229,7 @@ async function getProcessDetail(detail_url, p_id){
     jsondata.polo_passive = getPolo('Passivo')
     jsondata.events = getEvents()
     // jsondata.polo_passive = polo_passive
+    await downloadFile()
     return jsondata
 }
 
@@ -269,12 +267,22 @@ function getEvents(){
             description: $($date).next().find('.text-upper.texto-movimento').text().trim(),
             time: $($date).next().find('.col-sm-12 small.text-muted.pull-right').text().trim(),
             items: Array.from($($date).next().find('.anexos'))
-                .map($item => $($($item).children()[0]).text().trim())
-                .filter(text => text)
-                .map(text => text.match(/(\d)+ - (.*)/))
-                .map(matches => ({
+                .map($item => [$($($item).children()[0]).text().trim(), $($item).find('li')])
+                .filter(([text]) => text)
+                .map(([text, children]) => [text.match(/(\d+) - (.*)/), Array.from(children)])
+                .map(([matches, children]) => ({
                     number: matches[1],
-                    title: matches[2]
+                    title: matches[2],
+                    childs: 
+                        children.length ? 
+                        children.map( $child => $($child).text().trim() )
+                                .map( text => text.match(/(\d+) - (.*)/) )
+                                .map( matches => ({
+                                    number: matches[1],
+                                    title: matches[2]
+                                })) 
+                                : 
+                        undefined
                 }))
         }))
         .filter(each => each.date)

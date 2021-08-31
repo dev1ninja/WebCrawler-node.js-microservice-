@@ -1,6 +1,7 @@
 require('dotenv').config()
 const express = require('express');
 const logger = require('morgan')
+require('./database/connect')
 
 const app = express();
 
@@ -30,3 +31,5 @@ app.use((req, res, next) => {
 });
 
 app.use("/", require('./routes'))
+
+module.exports = app
