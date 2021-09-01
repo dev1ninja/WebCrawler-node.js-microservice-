@@ -113,7 +113,8 @@ async function downloadFile(referer){
         'javax.faces.ViewState': viewState,
         'detalheDocumento:download': 'detalheDocumento:download' 
       });
-    axios_file_download({
+    console.log("downloading attachments")
+    let filename = await axios_file_download({
         url: 'https://pje.tjma.jus.br/pje/Processo/ConsultaProcesso/Detalhe/listProcessoCompletoAdvogado.seam',
         method: 'get',
         headers: {
@@ -123,6 +124,8 @@ async function downloadFile(referer){
         },
         data
     })
+    console.log("downloaded", filename)
+    return filename
 }
 
 async function saveJson2Mongo(data){
@@ -230,10 +233,9 @@ async function getProcessDetail(detail_url, p_id){
     /******** polo ********/
     jsondata.polo_active = getPolo('Ativo')
     jsondata.polo_passive = getPolo('Passivo')
-    jsondata.events = getEvents()
+    jsondata.events = await getEvents(detail_url)
     // jsondata.polo_passive = polo_passive
     await timer(1000)
-    await downloadFile(detail_url)
     return jsondata
 }
 
@@ -262,7 +264,7 @@ function getPolo(type){
     return polo
 }
 
-function getEvents(){
+async function getEvents(detail_url){
     const $timelineDiv = document.getElementById('divTimeLine:eventosTimeLineElement')
     const $eventdates = Array.from($timelineDiv.querySelectorAll(".media.data"))
     moment.locale('pt')
@@ -272,17 +274,19 @@ function getEvents(){
             description: $($date).next().find('.text-upper.texto-movimento').text().trim(),
             time: $($date).next().find('.col-sm-12 small.text-muted.pull-right').text().trim(),
             items: Array.from($($date).next().find('.anexos'))
-                .map($item => [$($($item).children()[0]).text().trim(), $($item).find('li')])
+                .map($item => [$($($item).children()[0]).text().trim(), $($item).find('li>a'), $($item).children()[0]])
                 .filter(([text]) => text)
-                .map(([text, children]) => [text.match(/(\d+) - (.*)/), Array.from(children)])
-                .map(([matches, children]) => ({
+                .map(([text, children, $a]) => [text.match(/(\d+) - (.*)/), Array.from(children), $a])
+                .map(([matches, children, $a]) => ({
+                    $a,
                     number: matches[1],
                     title: matches[2],
                     childs: 
                         children.length ? 
-                        children.map( $child => $($child).text().trim() )
-                                .map( text => text.match(/(\d+) - (.*)/) )
-                                .map( matches => ({
+                        children.map( $child => [$($child).text().trim(), $child] )
+                                .map( ([text, $child]) => [text.match(/(\d+) - (.*)/), $child] )
+                                .map( ([matches, $child]) => ({
+                                    $a: $child,
                                     number: matches[1],
                                     title: matches[2]
                                 })) 
@@ -297,6 +301,23 @@ function getEvents(){
             items: each.items
         }))
     // console.log(JSON.stringify(events, '', '\t'))
+    for(let event of events){
+        for(let item of event.items){
+            item.$a?.click()
+            await timer(500)
+            delete item.$a
+            let file = await downloadFile(detail_url)
+            item.file = '/' + file
+            if( !item.childs ) continue
+            for(let child of item.childs){
+                child.$a?.click()
+                await timer(500)
+                delete child.$a
+                let file = await downloadFile(detail_url)
+                child.file = '/' + file
+            }
+        }
+    }
     return events
 }
 
@@ -318,7 +339,7 @@ async function scrap_process(processId){
     await timer(500)
     
     const jsondata = await getProcessDetail(detail_url, p_id)
-    console.log(jsondata)
+    console.log(JSON.stringify(jsondata, "", "\t"))
     await saveJson2Mongo(jsondata)
     return jsondata
 }
